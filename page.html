@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Icon To-Do List - Dark Mode</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lucide@0.378.0/dist/umd/lucide.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .icon-btn {
+            background: none;
+            border: none;
+            padding: 0.5rem;
+            cursor: pointer;
+            transition: color 0.2s ease-in-out, transform 0.1s ease-in-out;
+        }
+        .icon-btn:hover {
+            transform: scale(1.1);
+        }
+        .page {
+            display: none;
+        }
+        .page.active {
+            display: block;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.7);
+            -webkit-backdrop-filter: blur(2px);
+            backdrop-filter: blur(2px);
+        }
+        .modal-content {
+            margin: 8% auto;
+            padding: 2rem;
+            width: 90%;
+            max-width: 480px;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.2), 0 20px 40px -5px rgba(0,0,0,0.1);
+        }
+        .task-item.completed .task-description-text {
+            text-decoration: line-through;
+            color: #6b7280;
+        }
+        
+        /* Subtext Styling */
+        .task-subtext {
+            font-size: 0.875rem; /* text-sm */
+            color: #a0aec0; /* text-gray-400, slightly lighter for dark bg */
+            /* Aligned to match where task description text starts, after toggle icon */
+            padding-left: calc(1.5rem + 0.75rem + 0.25rem); /* icon width + icon margin-right + small indent */
+            margin-top: 0.375rem; /* space between task item and subtext block */
+            word-break: break-word;
+        }
+        .task-subtext p {
+            margin: 0 0 0.375rem 0; /* bottom margin for paragraphs */
+            padding: 0;
+            line-height: 1.5; /* improved readability */
+        }
+        .task-subtext ul {
+            list-style-type: disc;
+            margin: 0 0 0.375rem 1.25rem; /* Indent list, add bottom margin */
+            padding-left: 0.5rem; /* Further indent list items from their marker */
+            line-height: 1.5;
+        }
+        .task-subtext li {
+            margin-bottom: 0.125rem; /* Small space between list items */
+        }
+        /* End Subtext Styling */
+
+        .project-icon-selector button {
+            padding: 0.5rem;
+            border-radius: 0.375rem;
+            transition: background-color 0.2s;
+        }
+        .project-icon-selector button.selected {
+            background-color: #3b82f6;
+        }
+        .project-icon-selector button:hover:not(.selected) {
+            background-color: #4b5563;
+        }
+
+        .draggable {
+            cursor: grab;
+        }
+        .dragging {
+            opacity: 0.5;
+            border: 2px dashed #60a5fa;
+        }
+        .drag-over-target {
+            background-color: #374151 !important;
+            border-top: 2px solid #60a5fa;
+        }
+        .modal-content textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 sm:p-8 bg-gray-800 text-gray-200">
+
+    <div id="app-container" class="bg-gray-700 p-6 rounded-xl shadow-2xl w-full max-w-2xl mx-auto mt-8">
+
+        <div id="projects-page" class="page active">
+            <header class="flex justify-between items-center mb-6 pb-4 border-b border-gray-600">
+                <h1 class="text-3xl font-bold text-gray-100">Projects</h1>
+                <button id="open-add-project-modal-btn" class="icon-btn" title="Add New Project">
+                    <i data-lucide="plus-circle" class="w-8 h-8 text-blue-400 hover:text-blue-300"></i>
+                </button>
+            </header>
+            <div id="projects-list" class="space-y-3">
+                </div>
+            <p id="no-projects-message" class="text-center text-gray-400 mt-8 hidden">No projects yet. Create one to get started!</p>
+        </div>
+
+        <div id="tasks-page" class="page">
+            <header class="flex justify-between items-center mb-6 pb-4 border-b border-gray-600">
+                <button id="back-to-projects-btn" class="icon-btn" title="Back to Projects">
+                    <i data-lucide="arrow-left-circle" class="w-8 h-8 text-gray-300 hover:text-gray-100"></i>
+                </button>
+                <h1 id="project-name-header" class="text-3xl font-bold text-gray-100 truncate mx-4 flex-grow text-center">
+                    </h1>
+                <button id="open-add-task-modal-btn" class="icon-btn" title="Add New Task">
+                    <i data-lucide="plus-circle" class="w-8 h-8 text-blue-400 hover:text-blue-300"></i>
+                </button>
+            </header>
+
+            <div class="mb-4 rounded-lg border border-gray-600 bg-gray-800/60 shadow-md">
+                <div id="project-stats-header" class="flex justify-between items-center p-3 cursor-pointer hover:bg-gray-700/70 transition-colors rounded-t-lg">
+                    <h3 class="text-md font-semibold text-gray-200">Project Statistics</h3>
+                    <i id="stats-toggle-icon" data-lucide="chevron-down" class="w-5 h-5 text-gray-300 transition-transform duration-300 ease-in-out"></i>
+                </div>
+                <div id="project-stats-content" class="p-3 border-t border-gray-600 hidden rounded-b-lg space-y-1">
+                    <p class="text-sm text-gray-300">Total Tasks: <span id="total-tasks-count" class="text-gray-100 font-medium">0</span></p>
+                    <p class="text-sm text-gray-300">Completed: <span id="completed-tasks-count" class="text-green-400 font-medium">0</span></p>
+                    <p class="text-sm text-gray-300">Remaining: <span id="remaining-tasks-count" class="text-yellow-400 font-medium">0</span></p>
+                </div>
+            </div>
+
+            <div id="tasks-list" class="space-y-3">
+                </div>
+            <p id="no-tasks-message" class="text-center text-gray-400 mt-8 hidden">This project has no tasks. Add some!</p>
+        </div>
+    </div>
+
+    <div id="project-modal" class="modal">
+        <div class="modal-content bg-gray-600 text-gray-200">
+            <h2 id="project-modal-title" class="text-xl font-semibold mb-4">Add New Project</h2>
+            <input type="text" id="project-name-input" placeholder="Project Name" class="w-full p-3 bg-gray-500 border border-gray-400 rounded-md mb-4 text-gray-100 placeholder-gray-300 focus:ring-2 focus:ring-blue-400 focus:border-transparent outline-none">
+            <h3 class="text-md font-medium mb-2">Choose an Icon:</h3>
+            <div id="project-icon-selector" class="grid grid-cols-5 sm:grid-cols-6 gap-2 mb-6 project-icon-selector">
+                </div>
+            <input type="hidden" id="project-icon-input" value="folder">
+            <div class="flex justify-end space-x-3">
+                <button id="cancel-project-modal-btn" class="px-4 py-2 bg-gray-500 text-gray-200 rounded-md hover:bg-gray-400 transition-colors">Cancel</button>
+                <button id="save-project-btn" class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="task-modal" class="modal">
+        <div class="modal-content bg-gray-600 text-gray-200">
+            <h2 id="task-modal-title" class="text-xl font-semibold mb-4">Add New Task</h2>
+            <input type="text" id="task-description-input" placeholder="Task Description" class="w-full p-3 bg-gray-500 border border-gray-400 rounded-md mb-4 text-gray-100 placeholder-gray-300 focus:ring-2 focus:ring-blue-400 focus:border-transparent outline-none">
+            <div class="flex justify-end space-x-3">
+                <button id="cancel-task-modal-btn" class="px-4 py-2 bg-gray-500 text-gray-200 rounded-md hover:bg-gray-400 transition-colors">Cancel</button>
+                <button id="save-task-btn" class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="subtext-modal" class="modal">
+        <div class="modal-content bg-gray-600 text-gray-200">
+            <h2 id="subtext-modal-title" class="text-xl font-semibold mb-4">Edit Subtext</h2>
+            <textarea id="subtext-input" placeholder="Add details or subtext here... (Use * or - for bullets)" class="w-full p-3 bg-gray-500 border border-gray-400 rounded-md mb-4 text-gray-100 placeholder-gray-300 focus:ring-2 focus:ring-blue-400 focus:border-transparent outline-none h-32"></textarea>
+            <div class="flex justify-end space-x-3">
+                <button id="cancel-subtext-modal-btn" class="px-4 py-2 bg-gray-500 text-gray-200 rounded-md hover:bg-gray-400 transition-colors">Cancel</button>
+                <button id="save-subtext-btn" class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors">Save Subtext</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="custom-confirm-modal" class="modal">
+        <div class="modal-content bg-gray-600 text-gray-200">
+            <h2 id="custom-confirm-title" class="text-xl font-semibold mb-4">Confirm Action</h2>
+            <p id="custom-confirm-message" class="mb-6 text-gray-300">Are you sure?</p>
+            <div class="flex justify-end space-x-3">
+                <button id="custom-confirm-cancel-btn" class="px-4 py-2 bg-gray-500 text-gray-200 rounded-md hover:bg-gray-400 transition-colors">Cancel</button>
+                <button id="custom-confirm-confirm-btn" class="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize Lucide icons
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            } else {
+                console.error('Lucide library not loaded. Icons will not be rendered.');
+            }
+
+            // Application state
+            let projects = JSON.parse(localStorage.getItem('todoProjectsDarkV2')) || [];
+            let currentProjectId = null;
+            let editingProjectId = null;
+            let editingTaskId = null;
+            let editingSubtextTaskId = null;
+            const availableIcons = ['folder', 'briefcase', 'book', 'home', 'code-2', 'bar-chart-3', 'shopping-cart', 'clipboard-list', 'edit-3', 'lightbulb', 'award', 'target', 'zap', 'settings', 'gift', 'layout-list', 'file-check', 'file-x', 'calendar-days', 'message-square-text', 'align-left', 'list-ordered', 'list-checks'];
+
+            // DOM Element references
+            const projectsPage = document.getElementById('projects-page');
+            const tasksPage = document.getElementById('tasks-page');
+            const projectsList = document.getElementById('projects-list');
+            const tasksList = document.getElementById('tasks-list');
+            const projectNameHeader = document.getElementById('project-name-header');
+            const noProjectsMessage = document.getElementById('no-projects-message');
+            const noTasksMessage = document.getElementById('no-tasks-message');
+
+            const projectModal = document.getElementById('project-modal');
+            const projectModalTitle = document.getElementById('project-modal-title');
+            const projectNameInput = document.getElementById('project-name-input');
+            const projectIconSelector = document.getElementById('project-icon-selector');
+            const projectIconInput = document.getElementById('project-icon-input');
+
+            const taskModal = document.getElementById('task-modal');
+            const taskModalTitle = document.getElementById('task-modal-title');
+            const taskDescriptionInput = document.getElementById('task-description-input');
+
+            const subtextModal = document.getElementById('subtext-modal');
+            const subtextInput = document.getElementById('subtext-input');
+
+            const totalTasksCountElement = document.getElementById('total-tasks-count');
+            const completedTasksCountElement = document.getElementById('completed-tasks-count');
+            const remainingTasksCountElement = document.getElementById('remaining-tasks-count');
+            const projectStatsHeader = document.getElementById('project-stats-header');
+            const projectStatsContent = document.getElementById('project-stats-content');
+            const statsToggleIcon = document.getElementById('stats-toggle-icon');
+            
+            const customConfirmModal = document.getElementById('custom-confirm-modal');
+            const customConfirmTitle = document.getElementById('custom-confirm-title');
+            const customConfirmMessage = document.getElementById('custom-confirm-message');
+            const customConfirmCancelBtn = document.getElementById('custom-confirm-cancel-btn');
+            const customConfirmConfirmBtn = document.getElementById('custom-confirm-confirm-btn');
+            let confirmCallback = null; // Stores the action to perform on confirmation
+
+            let draggedItem = null; // For drag-and-drop
+
+            // --- Utility Functions ---
+            function createLucideIcons(options = {}) {
+                if (typeof lucide !== 'undefined') {
+                    lucide.createIcons(options);
+                }
+            }
+
+            function saveData() {
+                localStorage.setItem('todoProjectsDarkV2', JSON.stringify(projects));
+            }
+            
+            function showCustomConfirm(message, title = "Confirm Action", onConfirm) {
+                customConfirmTitle.textContent = title;
+                customConfirmMessage.textContent = message;
+                confirmCallback = onConfirm;
+                customConfirmModal.style.display = 'block';
+            }
+
+            function closeCustomConfirm() {
+                customConfirmModal.style.display = 'none';
+                confirmCallback = null;
+            }
+
+            customConfirmConfirmBtn.addEventListener('click', () => {
+                if (typeof confirmCallback === 'function') {
+                    confirmCallback();
+                }
+                closeCustomConfirm();
+            });
+            customConfirmCancelBtn.addEventListener('click', closeCustomConfirm);
+
+            // --- Page Navigation ---
+            function showProjectsPage() {
+                projectsPage.classList.add('active');
+                tasksPage.classList.remove('active');
+                currentProjectId = null;
+                editingProjectId = null;
+                editingTaskId = null;
+                editingSubtextTaskId = null;
+                renderProjects();
+            }
+
+            function showTasksPage(projectId) {
+                projectsPage.classList.remove('active');
+                tasksPage.classList.add('active');
+                currentProjectId = projectId;
+                editingTaskId = null;
+                editingSubtextTaskId = null;
+                const project = projects.find(p => p.id === projectId);
+                if (project) {
+                    projectNameHeader.innerHTML = '';
+                    const iconEl = document.createElement('i');
+                    iconEl.setAttribute('data-lucide', project.icon || 'folder');
+                    iconEl.className = 'w-7 h-7 mr-3 inline-block text-blue-300 flex-shrink-0';
+                    const textNode = document.createTextNode(project.name);
+                    projectNameHeader.appendChild(iconEl);
+                    projectNameHeader.appendChild(textNode);
+                    createLucideIcons({ nodes: [projectNameHeader] });
+                    renderTasks();
+                } else {
+                    console.warn(`Project with ID ${projectId} not found. Navigating to projects page.`);
+                    showProjectsPage();
+                }
+            }
+
+            // --- Drag and Drop Handlers ---
+            function handleDragStart(e) {
+                draggedItem = this;
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', this.dataset.projectId || this.dataset.taskId);
+                setTimeout(() => this.classList.add('dragging'), 0);
+            }
+
+            function handleDragEnd() {
+                if (this) this.classList.remove('dragging');
+                draggedItem = null;
+                document.querySelectorAll('.drag-over-target').forEach(el => el.classList.remove('drag-over-target'));
+            }
+
+            function handleDragOver(e) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                const targetItem = e.target.closest('.draggable');
+                if (targetItem && targetItem !== draggedItem) {
+                    document.querySelectorAll('.drag-over-target').forEach(el => el.classList.remove('drag-over-target'));
+                    targetItem.classList.add('drag-over-target');
+                }
+                return false;
+            }
+            
+            function handleDragLeave(e) {
+                const targetItem = e.target.closest('.draggable');
+                if (targetItem) {
+                    targetItem.classList.remove('drag-over-target');
+                }
+            }
+
+            function handleDropProjects(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const targetItem = this;
+                if (draggedItem && draggedItem !== targetItem && draggedItem.dataset.projectId) {
+                    const draggedId = draggedItem.dataset.projectId;
+                    const targetId = targetItem.dataset.projectId;
+                    const draggedIndex = projects.findIndex(p => p.id === draggedId);
+                    const targetIndex = projects.findIndex(p => p.id === targetId);
+                    if (draggedIndex !== -1 && targetIndex !== -1) {
+                        const [removedProject] = projects.splice(draggedIndex, 1);
+                        projects.splice(targetIndex, 0, removedProject);
+                        saveData();
+                        renderProjects();
+                    }
+                }
+                if (targetItem) targetItem.classList.remove('drag-over-target');
+                return false;
+            }
+            
+            function handleDropTasks(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const targetItem = this; // This is the taskItemContainer
+                const project = projects.find(p => p.id === currentProjectId);
+
+                if (draggedItem && draggedItem !== targetItem && project && project.tasks && draggedItem.dataset.taskId) {
+                    const draggedId = draggedItem.dataset.taskId;
+                    const targetId = targetItem.dataset.taskId; // Ensure targetItem has taskId
+                    
+                    const draggedIndex = project.tasks.findIndex(t => t.id === draggedId);
+                    const targetIndex = project.tasks.findIndex(t => t.id === targetId);
+
+                    if (draggedIndex !== -1 && targetIndex !== -1) {
+                        const [removedTask] = project.tasks.splice(draggedIndex, 1);
+                        project.tasks.splice(targetIndex, 0, removedTask);
+                        saveData();
+                        renderTasks();
+                    }
+                }
+                if (targetItem) targetItem.classList.remove('drag-over-target');
+                return false;
+            }
+
+            // --- Rendering Functions ---
+            function populateIconSelector(selectedIconName = 'folder') {
+                projectIconSelector.innerHTML = '';
+                availableIcons.forEach(iconName => {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = `icon-btn flex items-center justify-center p-2 rounded-md hover:bg-gray-500 transition-colors ${iconName === selectedIconName ? 'selected bg-blue-500' : 'bg-gray-700'}`;
+                    button.dataset.iconName = iconName;
+                    button.innerHTML = `<i data-lucide="${iconName}" class="w-6 h-6 text-gray-300"></i>`;
+                    button.addEventListener('click', () => {
+                        projectIconInput.value = iconName;
+                        projectIconSelector.querySelectorAll('button').forEach(btn => {
+                            btn.classList.remove('selected', 'bg-blue-500');
+                            btn.classList.add('bg-gray-700');
+                        });
+                        button.classList.add('selected', 'bg-blue-500');
+                        button.classList.remove('bg-gray-700');
+                    });
+                    projectIconSelector.appendChild(button);
+                });
+                createLucideIcons({ elements: projectIconSelector.querySelectorAll('[data-lucide]') });
+            }
+            
+            function renderProjects() {
+                projectsList.innerHTML = '';
+                if (projects.length === 0) {
+                    noProjectsMessage.classList.remove('hidden');
+                } else {
+                    noProjectsMessage.classList.add('hidden');
+                    projects.forEach(project => {
+                        const projectItem = document.createElement('div');
+                        projectItem.className = 'project-item group flex items-center justify-between p-4 bg-gray-600 rounded-lg shadow-md hover:bg-gray-500 transition-colors draggable relative';
+                        projectItem.dataset.projectId = project.id;
+                        projectItem.draggable = true;
+
+                        projectItem.addEventListener('dragstart', handleDragStart);
+                        projectItem.addEventListener('dragend', handleDragEnd);
+                        projectItem.addEventListener('dragover', handleDragOver);
+                        projectItem.addEventListener('dragleave', handleDragLeave);
+                        projectItem.addEventListener('drop', handleDropProjects);
+
+                        const projectInfoDiv = document.createElement('div');
+                        projectInfoDiv.className = 'flex items-center flex-grow cursor-pointer mr-2 min-w-0';
+                        projectInfoDiv.addEventListener('click', () => showTasksPage(project.id));
+
+                        const iconElement = document.createElement('i');
+                        iconElement.setAttribute('data-lucide', project.icon || 'folder');
+                        iconElement.className = 'w-6 h-6 mr-3 text-blue-300 flex-shrink-0';
+                        projectInfoDiv.appendChild(iconElement);
+
+                        const nameAndSummaryWrapper = document.createElement('div');
+                        nameAndSummaryWrapper.className = 'flex flex-col sm:flex-row sm:items-center min-w-0 flex-grow';
+
+                        const projectNameSpan = document.createElement('span');
+                        projectNameSpan.className = 'project-name text-lg font-medium text-gray-100 truncate';
+                        projectNameSpan.textContent = project.name;
+                        nameAndSummaryWrapper.appendChild(projectNameSpan);
+                        
+                        const taskSummarySpan = document.createElement('span');
+                        taskSummarySpan.className = 'project-task-summary text-xs text-gray-400 sm:ml-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 ease-in-out hidden sm:inline-flex items-center space-x-1 flex-shrink-0';
+                        
+                        const tasks = project.tasks || [];
+                        const totalTasks = tasks.length;
+                        const completedTasksCount = tasks.filter(t => t.completed).length;
+                        const remainingTasksCount = totalTasks - completedTasksCount;
+
+                        taskSummarySpan.innerHTML = `
+                            (<span class="text-green-400 flex items-center">${completedTasksCount}<i data-lucide="check-circle" class="ml-0.5 w-3 h-3"></i></span>,
+                             <span class="text-yellow-400 flex items-center">${remainingTasksCount}<i data-lucide="circle" class="ml-0.5 w-3 h-3"></i></span>,
+                             <span class="flex items-center text-gray-300">${totalTasks}<i data-lucide="list-checks" class="ml-0.5 w-3 h-3"></i></span>)
+                        `;
+                        nameAndSummaryWrapper.appendChild(taskSummarySpan);
+                        projectInfoDiv.appendChild(nameAndSummaryWrapper);
+                        projectItem.appendChild(projectInfoDiv);
+
+                        const buttonsDiv = document.createElement('div');
+                        buttonsDiv.className = 'flex items-center space-x-2 flex-shrink-0';
+
+                        const editBtn = document.createElement('button');
+                        editBtn.className = 'edit-project-btn icon-btn';
+                        editBtn.title = 'Edit Project';
+                        editBtn.innerHTML = '<i data-lucide="edit-3" class="w-5 h-5 text-yellow-400 hover:text-yellow-300"></i>';
+                        editBtn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            openProjectModal(project.id);
+                        });
+
+                        const deleteBtn = document.createElement('button');
+                        deleteBtn.className = 'delete-project-btn icon-btn';
+                        deleteBtn.title = 'Delete Project';
+                        deleteBtn.innerHTML = '<i data-lucide="trash-2" class="w-5 h-5 text-red-400 hover:text-red-300"></i>';
+                        deleteBtn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            deleteProject(project.id);
+                        });
+                        
+                        buttonsDiv.appendChild(editBtn);
+                        buttonsDiv.appendChild(deleteBtn);
+                        projectItem.appendChild(buttonsDiv);
+                        projectsList.appendChild(projectItem);
+                    });
+                }
+                createLucideIcons();
+            }
+            
+            /**
+             * Formats a multiline subtext string with potential bullet points into HTML.
+             * @param {string} subtextString The raw subtext.
+             * @returns {string} HTML representation of the subtext.
+             */
+            function formatSubtextToHtml(subtextString) {
+                if (!subtextString || subtextString.trim() === '') {
+                    return '';
+                }
+                const lines = subtextString.split('\n');
+                let html = '';
+                let inList = false;
+                // Regex to detect lines starting with *, -, or • followed by a space
+                const bulletRegex = /^(\*|-|•)\s+(.*)/;
+
+                for (const line of lines) {
+                    const bulletMatch = bulletRegex.exec(line);
+
+                    if (bulletMatch) {
+                        const listItemContent = bulletMatch[2]; // Content after the marker and space
+                        if (!inList) {
+                            html += '<ul>';
+                            inList = true;
+                        }
+                        html += `<li>${listItemContent}</li>`;
+                    } else {
+                        if (inList) {
+                            html += '</ul>';
+                            inList = false;
+                        }
+                        // For non-bullet lines, wrap in <p> only if they are not empty
+                        // This preserves paragraph structure and allows CSS to handle margins.
+                        if (line.trim() !== '') {
+                            html += `<p>${line}</p>`;
+                        } else {
+                            // Represent empty lines as a paragraph with a non-breaking space
+                            // to ensure they take up space, or let CSS handle empty <p> if styled.
+                            html += '<p>&nbsp;</p>'; 
+                        }
+                    }
+                }
+
+                if (inList) { // Close any unclosed list at the end
+                    html += '</ul>';
+                }
+                return html;
+            }
+
+            function renderTasks() {
+                tasksList.innerHTML = '';
+                const project = projects.find(p => p.id === currentProjectId);
+
+                if (!project || !project.tasks || project.tasks.length === 0) {
+                    noTasksMessage.classList.remove('hidden');
+                    totalTasksCountElement.textContent = '0';
+                    completedTasksCountElement.textContent = '0';
+                    remainingTasksCountElement.textContent = '0';
+                    if (!project && currentProjectId) { // Project ID was valid but project not found (e.g., deleted)
+                        tasksList.innerHTML = '<p class="text-center text-red-400">Error: Project not found. Please go back to projects.</p>';
+                    } else if (project && (!project.tasks || project.tasks.length === 0)) {
+                         noTasksMessage.classList.remove('hidden'); // Show "no tasks" message
+                    }
+                } else {
+                     noTasksMessage.classList.add('hidden');
+                    const completedTasks = project.tasks.filter(task => task.completed);
+                    const remainingTasks = project.tasks.filter(task => !task.completed);
+
+                    totalTasksCountElement.textContent = project.tasks.length;
+                    completedTasksCountElement.textContent = completedTasks.length;
+                    remainingTasksCountElement.textContent = remainingTasks.length;
+
+                    const sortedTasks = [...remainingTasks, ...completedTasks];
+
+                    sortedTasks.forEach(task => {
+                        const taskItemContainer = document.createElement('div');
+                        taskItemContainer.className = `task-item-container draggable ${task.completed ? 'completed' : ''}`;
+                        taskItemContainer.dataset.taskId = task.id;
+                        taskItemContainer.draggable = true;
+                        
+                        taskItemContainer.addEventListener('dragstart', handleDragStart);
+                        taskItemContainer.addEventListener('dragend', handleDragEnd);
+                        taskItemContainer.addEventListener('dragover', handleDragOver);
+                        taskItemContainer.addEventListener('dragleave', handleDragLeave);
+                        taskItemContainer.addEventListener('drop', handleDropTasks);
+
+                        const taskItem = document.createElement('div');
+                        taskItem.className = `task-item flex items-center p-3 bg-gray-600 rounded-lg shadow transition-opacity ${task.completed ? 'opacity-70' : 'opacity-100'}`;
+                        
+                        const toggleBtn = document.createElement('button');
+                        toggleBtn.className = 'toggle-task-btn icon-btn mr-3 flex-shrink-0';
+                        toggleBtn.title = task.completed ? 'Mark as Incomplete' : 'Mark as Complete';
+                        toggleBtn.innerHTML = task.completed 
+                            ? '<i data-lucide="check-circle-2" class="w-6 h-6 text-green-400"></i>' 
+                            : '<i data-lucide="circle" class="w-6 h-6 text-gray-400 hover:text-gray-200"></i>';
+                        toggleBtn.addEventListener('click', () => toggleTaskComplete(task.id));
+
+                        const taskDescriptionSpan = document.createElement('span');
+                        taskDescriptionSpan.className = 'task-description text-gray-200 flex-grow mr-2 min-w-0 break-words cursor-pointer hover:text-blue-300 transition-colors';
+                        
+                        const taskDescriptionText = document.createElement('span');
+                        taskDescriptionText.className = 'task-description-text';
+                         if (task.completed) {
+                            taskDescriptionText.classList.add('line-through', 'text-gray-400');
+                        }
+                        taskDescriptionText.textContent = task.description;
+                        taskDescriptionSpan.appendChild(taskDescriptionText);
+                        taskDescriptionSpan.addEventListener('click', (e) => {
+                            e.stopPropagation(); 
+                            openSubtextModal(task.id);
+                        });
+                        
+                        const taskButtonsDiv = document.createElement('div');
+                        taskButtonsDiv.className = 'flex items-center space-x-2 ml-auto flex-shrink-0';
+
+                        const editTaskBtn = document.createElement('button');
+                        editTaskBtn.className = 'edit-task-btn icon-btn';
+                        editTaskBtn.title = 'Edit Task Description';
+                        editTaskBtn.innerHTML = '<i data-lucide="edit-3" class="w-5 h-5 text-yellow-400 hover:text-yellow-300"></i>';
+                        editTaskBtn.addEventListener('click', () => openTaskModal(task.id));
+
+                        const deleteTaskBtn = document.createElement('button');
+                        deleteTaskBtn.className = 'delete-task-btn icon-btn';
+                        deleteTaskBtn.title = 'Delete Task';
+                        deleteTaskBtn.innerHTML = '<i data-lucide="trash-2" class="w-5 h-5 text-red-400 hover:text-red-300"></i>';
+                        deleteTaskBtn.addEventListener('click', () => deleteTask(task.id));
+
+                        taskButtonsDiv.appendChild(editTaskBtn);
+                        taskButtonsDiv.appendChild(deleteTaskBtn);
+
+                        taskItem.appendChild(toggleBtn);
+                        taskItem.appendChild(taskDescriptionSpan);
+                        taskItem.appendChild(taskButtonsDiv);
+                        
+                        taskItemContainer.appendChild(taskItem);
+
+                        if (task.subtext && task.subtext.trim() !== '') {
+                            const subtextElement = document.createElement('div'); // Changed from p to div
+                            subtextElement.className = 'task-subtext'; // Apply main class
+                            subtextElement.innerHTML = formatSubtextToHtml(task.subtext); // Use formatter
+                            taskItemContainer.appendChild(subtextElement);
+                        }
+                        tasksList.appendChild(taskItemContainer);
+                    });
+                }
+                createLucideIcons();
+            }
+
+            // --- Project Actions ---
+            function openProjectModal(projectIdToEdit = null) {
+                editingProjectId = projectIdToEdit;
+                let currentIcon = 'folder';
+                if (editingProjectId) {
+                    const project = projects.find(p => p.id === editingProjectId);
+                    if (project) {
+                        projectModalTitle.textContent = 'Edit Project';
+                        projectNameInput.value = project.name;
+                        currentIcon = project.icon || 'folder';
+                    } else {
+                         console.error(`Project with ID ${editingProjectId} not found for editing.`);
+                         closeProjectModal(); return;
+                    }
+                } else {
+                    projectModalTitle.textContent = 'Add New Project';
+                    projectNameInput.value = '';
+                }
+                populateIconSelector(currentIcon);
+                projectIconInput.value = currentIcon;
+                projectModal.style.display = 'block';
+                projectNameInput.focus();
+            }
+
+            function closeProjectModal() {
+                projectModal.style.display = 'none';
+                editingProjectId = null;
+            }
+
+            function addOrUpdateProject() {
+                const name = projectNameInput.value.trim();
+                const icon = projectIconInput.value || 'folder';
+                if (!name) {
+                    // Consider a more user-friendly notification than alert
+                    alert('Project name cannot be empty.'); 
+                    projectNameInput.focus();
+                    return;
+                }
+
+                if (editingProjectId) {
+                    const project = projects.find(p => p.id === editingProjectId);
+                    if (project) {
+                        project.name = name;
+                        project.icon = icon;
+                    }
+                } else {
+                    const newProject = {
+                        id: `proj_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                        name: name,
+                        icon: icon,
+                        tasks: []
+                    };
+                    projects.push(newProject);
+                }
+                saveData();
+                renderProjects();
+                closeProjectModal();
+            }
+
+            function deleteProject(projectId) {
+                const projectToDelete = projects.find(p => p.id === projectId);
+                if (!projectToDelete) {
+                    console.error(`Project with ID ${projectId} not found for deletion.`);
+                    return;
+                }
+                const message = `Are you sure you want to delete the project "${projectToDelete.name}" and all its tasks? This action cannot be undone.`;
+                showCustomConfirm(message, "Delete Project", () => {
+                    projects = projects.filter(p => p.id !== projectId);
+                    saveData();
+                    if (currentProjectId === projectId) {
+                        showProjectsPage();
+                    } else {
+                        renderProjects();
+                    }
+                });
+            }
+
+            // --- Task Actions (Main Description) ---
+            function openTaskModal(taskIdToEdit = null) {
+                editingTaskId = taskIdToEdit;
+                const project = projects.find(p => p.id === currentProjectId);
+                if (!project) {
+                     console.error("Cannot open task modal: current project not found.");
+                     return;
+                }
+
+                if (editingTaskId) {
+                    const task = project.tasks.find(t => t.id === editingTaskId);
+                    if (task) {
+                        taskModalTitle.textContent = 'Edit Task Description';
+                        taskDescriptionInput.value = task.description;
+                    } else {
+                        console.error(`Task with ID ${editingTaskId} not found for editing.`);
+                        closeTaskModal(); return;
+                    }
+                } else {
+                    taskModalTitle.textContent = 'Add New Task';
+                    taskDescriptionInput.value = '';
+                }
+                taskModal.style.display = 'block';
+                taskDescriptionInput.focus();
+            }
+
+            function closeTaskModal() {
+                taskModal.style.display = 'none';
+                editingTaskId = null;
+            }
+
+            function addOrUpdateTask() {
+                const description = taskDescriptionInput.value.trim();
+                if (!description) {
+                    alert('Task description cannot be empty.'); 
+                    taskDescriptionInput.focus();
+                    return;
+                }
+
+                const project = projects.find(p => p.id === currentProjectId);
+                if (!project) {
+                    console.error("Cannot add/update task: current project not found.");
+                    return;
+                }
+                if (!project.tasks) project.tasks = [];
+
+                if (editingTaskId) {
+                    const task = project.tasks.find(t => t.id === editingTaskId);
+                    if (task) task.description = description;
+                } else {
+                    const newTask = {
+                        id: `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                        description: description,
+                        completed: false,
+                        subtext: '' // Initialize subtext for new tasks
+                    };
+                    project.tasks.push(newTask);
+                }
+                saveData();
+                renderTasks();
+                closeTaskModal();
+            }
+            
+            // --- Subtext Modal Functions ---
+            function openSubtextModal(taskId) {
+                editingSubtextTaskId = taskId;
+                const project = projects.find(p => p.id === currentProjectId);
+                if (!project || !project.tasks) {
+                     console.error("Cannot open subtext modal: project or tasks not found.");
+                     return;
+                }
+                const task = project.tasks.find(t => t.id === taskId);
+                if (!task) {
+                    console.error(`Task with ID ${taskId} not found for subtext editing.`);
+                    return;
+                }
+                subtextInput.value = task.subtext || '';
+                subtextModal.style.display = 'block';
+                subtextInput.focus();
+            }
+
+            function closeSubtextModal() {
+                subtextModal.style.display = 'none';
+                editingSubtextTaskId = null;
+                subtextInput.value = '';
+            }
+
+            function saveSubtext() {
+                if (!editingSubtextTaskId || !currentProjectId) return;
+                const project = projects.find(p => p.id === currentProjectId);
+                if (!project || !project.tasks) return;
+                const task = project.tasks.find(t => t.id === editingSubtextTaskId);
+                if (!task) return;
+
+                task.subtext = subtextInput.value; // Store raw value, formatting happens on render
+                saveData();
+                renderTasks();
+                closeSubtextModal();
+            }
+            
+            document.getElementById('save-subtext-btn').addEventListener('click', saveSubtext);
+            document.getElementById('cancel-subtext-modal-btn').addEventListener('click', closeSubtextModal);
+            subtextInput.addEventListener('keypress', function(event) {
+                // Allow Shift+Enter for new lines, Enter alone saves
+                if (event.key === 'Enter' && !event.shiftKey) { 
+                    event.preventDefault(); 
+                    saveSubtext();
+                }
+            });
+
+            // --- Task Deletion and Completion ---
+            function deleteTask(taskId) {
+                const project = projects.find(p => p.id === currentProjectId);
+                if (!project || !project.tasks) return;
+                const taskToDelete = project.tasks.find(t => t.id === taskId);
+                if (!taskToDelete) {
+                     console.error(`Task with ID ${taskId} not found for deletion.`);
+                     return;
+                }
+                const message = `Are you sure you want to delete the task "${taskToDelete.description}"?`;
+                showCustomConfirm(message, "Delete Task", () => {
+                    project.tasks = project.tasks.filter(t => t.id !== taskId);
+                    saveData();
+                    renderTasks();
+                });
+            }
+
+            function toggleTaskComplete(taskId) {
+                const project = projects.find(p => p.id === currentProjectId);
+                if (project && project.tasks) {
+                    const task = project.tasks.find(t => t.id === taskId);
+                    if (task) {
+                        task.completed = !task.completed;
+                        saveData();
+                        renderTasks();
+                    }
+                }
+            }
+
+            // --- Global Event Listeners ---
+            document.getElementById('open-add-project-modal-btn').addEventListener('click', () => openProjectModal());
+            document.getElementById('save-project-btn').addEventListener('click', addOrUpdateProject);
+            document.getElementById('cancel-project-modal-btn').addEventListener('click', closeProjectModal);
+            
+            document.getElementById('back-to-projects-btn').addEventListener('click', showProjectsPage);
+            document.getElementById('open-add-task-modal-btn').addEventListener('click', () => openTaskModal());
+            document.getElementById('save-task-btn').addEventListener('click', addOrUpdateTask);
+            document.getElementById('cancel-task-modal-btn').addEventListener('click', closeTaskModal);
+
+            if (projectStatsHeader && projectStatsContent && statsToggleIcon) {
+                projectStatsHeader.addEventListener('click', () => {
+                    projectStatsContent.classList.toggle('hidden');
+                    statsToggleIcon.classList.toggle('rotate-180');
+                });
+            }
+
+            window.onclick = function(event) {
+                if (event.target == projectModal) closeProjectModal();
+                if (event.target == taskModal) closeTaskModal();
+                if (event.target == subtextModal) closeSubtextModal();
+                if (event.target == customConfirmModal) closeCustomConfirm();
+            }
+            
+            projectNameInput.addEventListener('keypress', function(event) {
+                if (event.key === 'Enter') addOrUpdateProject();
+            });
+            taskDescriptionInput.addEventListener('keypress', function(event) {
+                if (event.key === 'Enter') addOrUpdateTask();
+            });
+
+            // --- Initial Load ---
+            showProjectsPage();
+        });
+    </script>
+</body>
+</html>
